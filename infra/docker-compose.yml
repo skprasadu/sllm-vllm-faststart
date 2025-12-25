@@ -1,0 +1,49 @@
+services:
+  sllm_head:
+    image: serverlessllm/sllm:0.8.0
+    container_name: sllm_head
+    shm_size: "10gb"
+    environment:
+      - MODE=HEAD
+      - HF_HOME=/hf-cache
+      - HF_HUB_CACHE=/hf-cache/hub
+    volumes:
+      - ${HF_CACHE_FOLDER}:/hf-cache
+      - ./deploy:/deploy:ro
+    entrypoint: ["/deploy/head_bootstrap.sh"]
+    ports:
+      - "6379:6379"
+      - "8343:8343"
+    networks:
+      - sllm_network
+    restart: unless-stopped
+
+  sllm_worker_0:
+    image: serverlessllm/sllm:0.8.0
+    container_name: sllm_worker_0
+    shm_size: "10gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]
+              device_ids: ["0"]
+    environment:
+      - MODE=WORKER
+      - WORKER_ID=0
+      - STORAGE_PATH=/models
+      - HF_HOME=/hf-cache
+      - HF_HUB_CACHE=/hf-cache/hub
+    volumes:
+      - ${MODEL_FOLDER}:/models
+      - ${HF_CACHE_FOLDER}:/hf-cache
+    command: ["--mem-pool-size", "4GB", "--registration-required", "true"]
+    networks:
+      - sllm_network
+    restart: unless-stopped
+
+networks:
+  sllm_network:
+    driver: bridge
+    name: sllm
