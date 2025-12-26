@@ -121,14 +121,15 @@ services:
     ports:
       - "8082:8000"
       # Optional: you can expose store gRPC too, but not required for vLLM
-      - "8073:8073"
+      # - "8073:8073"
 
     # ✅ make depends_on actually mean “ready”
     healthcheck:
-      test: ["CMD-SHELL", "python3 - <<'PY'\nimport socket\ns=socket.socket(); s.settimeout(1)\ntry:\n  s.connect(('127.0.0.1', 8073))\nexcept Exception:\n  raise SystemExit(1)\nelse:\n  raise SystemExit(0)\nPY"]
-      interval: 1s
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1',8073),timeout=1).close()"]
+      interval: 2s
       timeout: 1s
-      retries: 120
+      retries: 180
+      start_period: 60s
 
     restart: unless-stopped
 

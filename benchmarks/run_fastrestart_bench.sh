@@ -4,22 +4,20 @@ set -euo pipefail
 # Benchmark: restart latency (baseline vs faststart with sllm_store kept up)
 #
 # Measures:
-# - time-to-ready: from restart command start -> /v1/models returns 200
+# - time-to-ready: from `docker restart <container>` start -> /v1/models returns 200
 # - first completion latency: curl time_total for a single chat completion
 #
 # Assumptions:
-# - baseline API exposed on host port 8001 (configurable)
-# - faststart API exposed on host port 8082 (configurable; you changed it to 8082)
+# - baseline API exposed on host port 8001
+# - faststart API exposed on host port 8082 (you set this)
 # - compose services exist: vllm_baseline, sllm_store, vllm_faststart
-# - container_name is set in compose so docker restart works by name
-#
-# Env:
-# - MODEL_FOLDER, HF_CACHE_FOLDER from .env or .env.template (or already exported)
-# - Optional: VLLM_BASELINE_PORT, VLLM_FASTSTART_PORT
+# - vllm_faststart uses: network_mode: "service:sllm_store"
 
 RUNS=5
 DROP_CACHES=0
 NOTE=""
+VLLM_BASELINE_PORT="8001"
+VLLM_FASTSTART_PORT="8082"
 
 usage() {
   cat <<USAGE
@@ -33,40 +31,18 @@ Usage: $0 [--runs N] [--drop-caches] [--note "text"] [--baseline-port P] [--fast
 
 Examples:
   $0 --runs 5
-  $0 --runs 10 --note "Azure T4, ubuntu 22.04"
-  $0 --runs 10 --faststart-port 8082 --note "store sidecar kept up"
+  $0 --runs 3 --note "Azure T4, ubuntu 22.04, store sidecar" --faststart-port 8082
 USAGE
 }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --runs) RUNS="${2:-}"; shift 2 ;;
-    --drop-caches) DROP_CACHES=1; shift 1 ;;
-    --note) NOTE="${2:-}"; shift 2 ;;
-    --baseline-port) VLLM_BASELINE_PORT="${2:-}"; shift 2 ;;
-    --faststart-port) VLLM_FASTSTART_PORT="${2:-}"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "[fastrestart] ERROR: unknown arg: $1" >&2; usage; exit 2 ;;
-  esac
-done
+need_cmd() {
+  local c="$1"
+  command -v "$c" >/dev/null 2>&1 || { echo "[fastrestart] ERROR: missing command: $c" >&2; exit 2; }
+}
 
-if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
-  echo "[fastrestart] ERROR: --runs must be a positive integer" >&2
-  exit 2
-fi
-
-if ! command -v docker >/dev/null 2>&1; then
-  echo "[fastrestart] ERROR: docker not found in PATH" >&2
-  exit 2
-fi
-if ! command -v curl >/dev/null 2>&1; then
-  echo "[fastrestart] ERROR: curl not found in PATH" >&2
-  exit 2
-fi
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "[fastrestart] ERROR: python3 not found in PATH" >&2
-  exit 2
-fi
+need_cmd docker
+need_cmd curl
+need_cmd python3
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$REPO_ROOT" ]]; then
@@ -88,7 +64,7 @@ if [[ ! -f "$README_FILE" ]]; then
 fi
 mkdir -p "$RESULTS_DIR"
 
-# Prefer .env, fall back to .env.template (your repo has .env.template)
+# Prefer .env, fall back to .env.template
 ENV_FILE=""
 if [[ -f "$REPO_ROOT/.env" ]]; then
   ENV_FILE="$REPO_ROOT/.env"
@@ -96,7 +72,7 @@ elif [[ -f "$REPO_ROOT/.env.template" ]]; then
   ENV_FILE="$REPO_ROOT/.env.template"
 fi
 
-# Load env vars into this script process (so MODEL_FOLDER/HF_CACHE_FOLDER available)
+# Load env vars FIRST (so CLI args override them)
 if [[ -n "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
@@ -104,23 +80,44 @@ if [[ -n "$ENV_FILE" ]]; then
   set +a
 fi
 
+# Now parse CLI args (CLI wins)
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runs) RUNS="${2:-}"; shift 2 ;;
+    --drop-caches) DROP_CACHES=1; shift 1 ;;
+    --note) NOTE="${2:-}"; shift 2 ;;
+    --baseline-port) VLLM_BASELINE_PORT="${2:-}"; shift 2 ;;
+    --faststart-port) VLLM_FASTSTART_PORT="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "[fastrestart] ERROR: unknown arg: $1" >&2; usage; exit 2 ;;
+  esac
+done
+
+if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
+  echo "[fastrestart] ERROR: --runs must be a positive integer" >&2
+  exit 2
+fi
+if ! [[ "$VLLM_BASELINE_PORT" =~ ^[0-9]+$ ]]; then
+  echo "[fastrestart] ERROR: --baseline-port must be numeric" >&2
+  exit 2
+fi
+if ! [[ "$VLLM_FASTSTART_PORT" =~ ^[0-9]+$ ]]; then
+  echo "[fastrestart] ERROR: --faststart-port must be numeric" >&2
+  exit 2
+fi
+
 # Required env vars
 if [[ -z "${MODEL_FOLDER:-}" ]]; then
   echo "[fastrestart] ERROR: MODEL_FOLDER is not set." >&2
-  echo "[fastrestart] Add it to .env (or export it): MODEL_FOLDER=/data/sllm-models" >&2
+  echo "[fastrestart] Add it to .env/.env.template or export it (example: MODEL_FOLDER=/data/sllm-models)" >&2
   exit 2
 fi
 if [[ -z "${HF_CACHE_FOLDER:-}" ]]; then
   echo "[fastrestart] ERROR: HF_CACHE_FOLDER is not set." >&2
-  echo "[fastrestart] Add it to .env (or export it): HF_CACHE_FOLDER=/data/hf-cache" >&2
+  echo "[fastrestart] Add it to .env/.env.template or export it (example: HF_CACHE_FOLDER=/data/hf-cache)" >&2
   exit 2
 fi
 
-# Ports (default faststart = 8082 as you requested)
-VLLM_BASELINE_PORT="${VLLM_BASELINE_PORT:-8001}"
-VLLM_FASTSTART_PORT="${VLLM_FASTSTART_PORT:-8082}"
-
-# Compose wrapper uses the same env file (so compose sees the same values)
 compose() {
   if [[ -n "$ENV_FILE" ]]; then
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
@@ -131,7 +128,7 @@ compose() {
 
 now_ms() { date +%s%3N; }
 
-wait_ready() {
+wait_http_ready() {
   local url="$1"
   local timeout_s="${2:-1200}"
   local start_s
@@ -148,12 +145,29 @@ wait_ready() {
   done
 }
 
+wait_store_ready() {
+  local timeout_s="${1:-600}"
+  local start_s
+  start_s="$(date +%s)"
+  while true; do
+    if docker exec sllm_store python3 -c "import socket; socket.create_connection(('127.0.0.1',8073),timeout=1).close()" >/dev/null 2>&1; then
+      echo "[fastrestart] sllm_store is ready on 127.0.0.1:8073" >&2
+      return 0
+    fi
+    if (( $(date +%s) - start_s > timeout_s )); then
+      echo "[fastrestart] ERROR: timed out waiting for sllm_store :8073" >&2
+      echo "[fastrestart] ---- sllm_store logs (tail 200) ----" >&2
+      docker logs --tail=200 sllm_store >&2 || true
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 drop_caches_if_requested() {
   if [[ "$DROP_CACHES" -eq 1 ]]; then
-    # Fail fast if sudo isn't passwordless (prevents prompts mixing into output)
     if ! sudo -n true 2>/dev/null; then
       echo "[fastrestart] ERROR: --drop-caches requires passwordless sudo (sudo -n)." >&2
-      echo "[fastrestart] Either run once with 'sudo -v' or configure NOPASSWD for this command." >&2
       exit 2
     fi
     sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches' >/dev/null 2>&1
@@ -168,8 +182,6 @@ hard_reset_all() {
 warmup_once() {
   local port="$1"
   local url_chat="http://127.0.0.1:${port}/v1/chat/completions"
-
-  # Verify 200, ignore body, capture time_total (but discard it; warmup only)
   local out code t
   out="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" \
     "$url_chat" \
@@ -178,7 +190,7 @@ warmup_once() {
   code="${out%% *}"
   t="${out##* }"
   if [[ "$code" != "200" ]]; then
-    echo "[fastrestart] ERROR: warmup request failed (HTTP $code) on port $port" >&2
+    echo "[fastrestart] ERROR: warmup failed (HTTP $code) on port $port" >&2
     exit 2
   fi
   echo "[fastrestart] warmup ok on port $port (time_total=${t}s)" >&2
@@ -202,7 +214,7 @@ measure_restarts_json() {
     local start end delta
     start="$(now_ms)"
     docker restart "$container" >/dev/null
-    wait_ready "$url_models" 1200
+    wait_http_ready "$url_models" 1200
     end="$(now_ms)"
     delta=$((end - start))
 
@@ -214,7 +226,7 @@ measure_restarts_json() {
     code="${out%% *}"
     t="${out##* }"
     if [[ "$code" != "200" ]]; then
-      echo "[fastrestart] ERROR: chat request failed (HTTP $code) after restart on ${label}" >&2
+      echo "[fastrestart] ERROR: chat failed (HTTP $code) after restart on ${label}" >&2
       exit 2
     fi
 
@@ -227,34 +239,32 @@ measure_restarts_json() {
     sleep 1
   done
 
-  # IMPORTANT: only JSON goes to STDOUT (captured by $(...))
   python3 - <<PY
 import json
-ready_s = """${ready_ms_list[*]}""".strip()
-first_s = """${first_s_list[*]}""".strip()
-ready = [int(x) for x in ready_s.split()] if ready_s else []
-first = [float(x) for x in first_s.split()] if first_s else []
+ready = [int(x) for x in """${ready_ms_list[*]}""".strip().split()] if """${ready_ms_list[*]}""".strip() else []
+first = [float(x) for x in """${first_s_list[*]}""".strip().split()] if """${first_s_list[*]}""".strip() else []
 print(json.dumps({"ready_ms": ready, "first_s": first}))
 PY
 }
 
-# README must contain FASTRESTART markers (separate from coldstart markers)
+# FASTRESTART table block must exist and contain header+separator
 if ! grep -q '<!-- FASTRESTART:START -->' "$README_FILE" || ! grep -q '<!-- FASTRESTART:END -->' "$README_FILE"; then
   echo "[fastrestart] ERROR: benchmarks/README.md is missing FASTRESTART markers." >&2
-  echo "Add this block somewhere in benchmarks/README.md:" >&2
-  cat >&2 <<'MARKERS'
-<!-- FASTRESTART:START -->
+  exit 2
+fi
+if [[ "$(awk '/<!-- FASTRESTART:START -->/{f=1;next} /<!-- FASTRESTART:END -->/{f=0} f{print}' "$README_FILE" | wc -l)" -lt 2 ]]; then
+  echo "[fastrestart] ERROR: FASTRESTART block exists but has no table header." >&2
+  echo "Paste this inside benchmarks/README.md between FASTRESTART markers:" >&2
+  cat >&2 <<'HDR'
 | Timestamp (UTC) | Git SHA | Host | GPU | Model | Runs | Baseline restart ready median (ms) | Faststart restart ready median (ms) | Restart speedup (x) | Baseline restart first completion median (s) | Faststart restart first completion median (s) | Notes | Raw |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|
-<!-- FASTRESTART:END -->
-MARKERS
+HDR
   exit 2
 fi
 
-# Faststart restart bench requires store-format model
+# store-format model must exist
 if [[ ! -d "$MODEL_FOLDER/vllm/Qwen/Qwen3-0.6B" ]]; then
-  echo "[fastrestart] ERROR: missing store-format model at:" >&2
-  echo "  $MODEL_FOLDER/vllm/Qwen/Qwen3-0.6B" >&2
+  echo "[fastrestart] ERROR: missing store-format model at: $MODEL_FOLDER/vllm/Qwen/Qwen3-0.6B" >&2
   echo "[fastrestart] Run conversion:" >&2
   echo "  docker compose -f vllm_bridge/docker-compose.yml --profile tools run -T --rm convert_qwen3_0_6b" >&2
   exit 2
@@ -273,42 +283,37 @@ echo "[fastrestart] HF_CACHE_FOLDER=$HF_CACHE_FOLDER" >&2
 echo "[fastrestart] RUNS=$RUNS DROP_CACHES=$DROP_CACHES NOTE='${NOTE}'" >&2
 echo "[fastrestart] baseline port=$VLLM_BASELINE_PORT faststart port=$VLLM_FASTSTART_PORT" >&2
 
-# -------------------------------------------------------------------
-# 1) BASELINE: restart vllm_baseline repeatedly (no store)
-# -------------------------------------------------------------------
+# ---------------- BASELINE ----------------
 hard_reset_all
 compose --profile baseline up -d vllm_baseline >/dev/null
-wait_ready "http://127.0.0.1:${VLLM_BASELINE_PORT}/v1/models" 1200
+wait_http_ready "http://127.0.0.1:${VLLM_BASELINE_PORT}/v1/models" 1200
 warmup_once "$VLLM_BASELINE_PORT"
 
 echo "" >&2
 echo "[fastrestart] ===== BASELINE RESTARTS =====" >&2
 BASELINE_JSON="$(measure_restarts_json baseline vllm_baseline "$VLLM_BASELINE_PORT")"
 
-# free GPU
 docker rm -f vllm_baseline >/dev/null 2>&1 || true
 
-# -------------------------------------------------------------------
-# 2) FASTSTART: keep sllm_store up; restart vllm_faststart repeatedly
-# -------------------------------------------------------------------
+# ---------------- FASTSTART (store kept up) ----------------
 hard_reset_all
-
-# Ensure patched image exists (no-op if already built)
 compose build vllm_faststart >/dev/null
 
-# Bring up store + vLLM once, then only restart vLLM for measurements
-compose --profile faststart up -d sllm_store vllm_faststart >/dev/null
-wait_ready "http://127.0.0.1:${VLLM_FASTSTART_PORT}/v1/models" 1200
+# Start store first, wait for gRPC, then start vLLM
+compose --profile faststart up -d sllm_store >/dev/null
+wait_store_ready 600
+
+compose --profile faststart up -d vllm_faststart >/dev/null
+wait_http_ready "http://127.0.0.1:${VLLM_FASTSTART_PORT}/v1/models" 1200
 warmup_once "$VLLM_FASTSTART_PORT"
 
 echo "" >&2
 echo "[fastrestart] ===== FASTSTART RESTARTS (store kept up) =====" >&2
 FASTSTART_JSON="$(measure_restarts_json faststart vllm_faststart "$VLLM_FASTSTART_PORT")"
 
-# shutdown
 hard_reset_all
 
-# Compute medians + speedup
+# summary stats
 BASE_READY_MED="$(python3 - <<PY
 import json, statistics
 d=json.loads('''$BASELINE_JSON''')
@@ -354,10 +359,7 @@ out = {
   "runs": $RUNS,
   "drop_caches": bool($DROP_CACHES),
   "note": "$NOTE",
-  "ports": {
-    "baseline_port": int("$VLLM_BASELINE_PORT"),
-    "faststart_port": int("$VLLM_FASTSTART_PORT"),
-  },
+  "ports": {"baseline_port": int("$VLLM_BASELINE_PORT"), "faststart_port": int("$VLLM_FASTSTART_PORT")},
   "baseline_restart": json.loads('''$BASELINE_JSON'''),
   "faststart_restart": json.loads('''$FASTSTART_JSON'''),
   "summary": {
@@ -373,7 +375,6 @@ with open("$RAW_PATH", "w") as f:
 print("[fastrestart] wrote", "$RAW_PATH")
 PY
 
-# Update FASTRESTART table in benchmarks/README.md (prepend row)
 python3 - <<PY
 from pathlib import Path
 
@@ -382,7 +383,6 @@ lines = readme.read_text().splitlines()
 
 start = "<!-- FASTRESTART:START -->"
 end = "<!-- FASTRESTART:END -->"
-
 sidx = lines.index(start)
 eidx = lines.index(end)
 
