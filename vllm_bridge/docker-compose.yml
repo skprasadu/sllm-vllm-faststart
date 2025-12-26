@@ -69,6 +69,8 @@ services:
       - ${HF_CACHE_FOLDER}:/hf-cache
     ports:
       - "8000:8000"
+    # IMPORTANT: override image ENTRYPOINT (otherwise it starts store again)
+    entrypoint: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
     command:
       - "--model"
       - "/models/vllm/Qwen/Qwen3-0.6B"
@@ -124,3 +126,33 @@ services:
       - "--storage-path"
       - "/models/vllm"
     restart: "no"
+
+  sllm_store:
+    profiles: ["faststart"]
+    build:
+      context: ./infra
+      dockerfile: Dockerfile.vllm_sllm
+    image: sllm-vllm-faststart:v0.1
+    container_name: sllm_store
+    shm_size: "10gb"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]
+              device_ids: ["0"]
+    volumes:
+      - ${MODEL_FOLDER}:/models
+    environment:
+      - STORAGE_PATH=/models/vllm
+      - MEM_POOL_SIZE=4GB
+    # IMPORTANT: override image ENTRYPOINT (otherwise it starts vLLM too)
+    entrypoint: ["sllm-store"]
+    command: ["start", "--storage-path", "/models/vllm", "--mem-pool-size", "4GB"]
+    # IMPORTANT: expose vLLM port here because vllm_faststart will share this network namespace
+    ports:
+      - "8000:8000"
+      - "8073:8073"
+    restart: unless-stopped

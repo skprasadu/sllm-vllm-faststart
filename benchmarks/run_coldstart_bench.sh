@@ -89,8 +89,16 @@ wait_ready() {
 
 drop_caches_if_requested() {
   if [[ "$DROP_CACHES" -eq 1 ]]; then
-    echo "[bench] Dropping Linux page cache (requires sudo)..."
-    sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
+    echo "[bench] Dropping Linux page cache (requires sudo)..." >&2
+
+    # Fail fast if sudo isn't passwordless (prevents hangs / prompt garbage).
+    if ! sudo -n true 2>/dev/null; then
+      echo "[bench] ERROR: --drop-caches requires passwordless sudo (sudo -n)." >&2
+      echo "[bench] Either run once with 'sudo -v' or configure NOPASSWD for this command." >&2
+      exit 2
+    fi
+
+    sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches' >/dev/null 2>&1
   fi
 }
 
