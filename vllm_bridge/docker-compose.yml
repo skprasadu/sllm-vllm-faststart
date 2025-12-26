@@ -108,6 +108,13 @@ services:
     container_name: sllm_store
     shm_size: "10gb"
     ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]
+              device_ids: ["0"]
     volumes:
       - ${MODEL_FOLDER}:/models
     environment:
