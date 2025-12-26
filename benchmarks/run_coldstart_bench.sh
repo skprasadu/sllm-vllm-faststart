@@ -1,8 +1,3 @@
----
-
-## 2) Add this script: `benchmarks/run_coldstart_bench.sh`
-
-```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
