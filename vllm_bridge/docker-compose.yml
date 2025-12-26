@@ -93,7 +93,6 @@ services:
 
   convert_qwen3_0_6b:
     profiles: ["tools"]
-    # Make sure the image exists even if you run convert first.
     build:
       context: ./infra
       dockerfile: Dockerfile.vllm_sllm
@@ -116,11 +115,12 @@ services:
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
-    # IMPORTANT: exec-form entrypoint so args are not eaten by bash -c
     entrypoint: ["python3", "/opt/sllm_tools/save_vllm_model.py"]
     command:
       - "--model-name"
       - "Qwen/Qwen3-0.6B"
+      - "--tensor-parallel-size"
+      - "1"
       - "--storage-path"
       - "/models/vllm"
     restart: "no"

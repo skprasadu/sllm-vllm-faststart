@@ -31,9 +31,10 @@ RUN set -eux; \
 
 # Fetch the conversion tool used by ServerlessLLM to save a model into the Store format for vLLM
 RUN mkdir -p /opt/sllm_tools && \
-  curl -L -o /opt/sllm_tools/save_vllm_model.py \
-    "https://raw.githubusercontent.com/ServerlessLLM/ServerlessLLM/${SLLM_REPO_TAG}/examples/sllm_store/save_vllm_model.py"
-
+  curl -fL -o /opt/sllm_tools/save_vllm_model.py \
+    "https://raw.githubusercontent.com/ServerlessLLM/ServerlessLLM/${SLLM_REPO_TAG}/sllm_store/examples/save_vllm_model.py" && \
+  python3 -m py_compile /opt/sllm_tools/save_vllm_model.py
+  
 COPY ./entrypoint_store_and_vllm.sh /entrypoint_store_and_vllm.sh
 RUN chmod +x /entrypoint_store_and_vllm.sh
 
