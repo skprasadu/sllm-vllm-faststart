@@ -16,7 +16,6 @@ services:
       - HF_HOME=/hf-cache
       - HF_HUB_CACHE=/hf-cache/hub
       - TRANSFORMERS_CACHE=/hf-cache/transformers
-      # Helps reduce fragmentation when you're near the VRAM limit
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     volumes:
       - ${HF_CACHE_FOLDER}:/hf-cache
@@ -94,6 +93,10 @@ services:
 
   convert_qwen3_0_6b:
     profiles: ["tools"]
+    # Make sure the image exists even if you run convert first.
+    build:
+      context: ./infra
+      dockerfile: Dockerfile.vllm_sllm
     image: sllm-vllm-faststart:v0.1
     container_name: convert_qwen3_0_6b
     shm_size: "10gb"
@@ -113,9 +116,11 @@ services:
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
-    entrypoint: ["bash", "-lc"]
-    command: >
-      python3 /opt/sllm_tools/save_vllm_model.py
-      --model-name Qwen/Qwen3-0.6B
-      --tensor-parallel-size 1
-      --storage-path /models/vllm
+    # IMPORTANT: exec-form entrypoint so args are not eaten by bash -c
+    entrypoint: ["python3", "/opt/sllm_tools/save_vllm_model.py"]
+    command:
+      - "--model-name"
+      - "Qwen/Qwen3-0.6B"
+      - "--storage-path"
+      - "/models/vllm"
+    restart: "no"
