@@ -1,5 +1,6 @@
 services:
   vllm_baseline:
+    profiles: ["baseline"]
     image: vllm/vllm-openai:v0.9.0.1
     container_name: vllm_baseline
     shm_size: "10gb"
@@ -15,6 +16,8 @@ services:
       - HF_HOME=/hf-cache
       - HF_HUB_CACHE=/hf-cache/hub
       - TRANSFORMERS_CACHE=/hf-cache/transformers
+      # Helps reduce fragmentation when you're near the VRAM limit
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     volumes:
       - ${HF_CACHE_FOLDER}:/hf-cache
     ports:
@@ -28,9 +31,19 @@ services:
       - "0.0.0.0"
       - "--port"
       - "8001"
+      # --- T4-safe knobs ---
+      - "--dtype"
+      - "float16"
+      - "--gpu-memory-utilization"
+      - "0.70"
+      - "--max-num-seqs"
+      - "16"
+      - "--max-model-len"
+      - "4096"
     restart: unless-stopped
 
   vllm_faststart:
+    profiles: ["faststart"]
     build:
       context: ./infra
       dockerfile: Dockerfile.vllm_sllm
@@ -51,6 +64,7 @@ services:
       - HF_HOME=/hf-cache
       - HF_HUB_CACHE=/hf-cache/hub
       - TRANSFORMERS_CACHE=/hf-cache/transformers
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
@@ -67,12 +81,21 @@ services:
       - "0.0.0.0"
       - "--port"
       - "8000"
+      # --- T4-safe knobs ---
+      - "--dtype"
+      - "float16"
+      - "--gpu-memory-utilization"
+      - "0.70"
+      - "--max-num-seqs"
+      - "16"
+      - "--max-model-len"
+      - "4096"
     restart: unless-stopped
 
   convert_qwen3_0_6b:
+    profiles: ["tools"]
     image: sllm-vllm-faststart:v0.1
     container_name: convert_qwen3_0_6b
-    profiles: ["tools"]
     shm_size: "10gb"
     ipc: host
     deploy:
@@ -86,6 +109,7 @@ services:
       - HF_HOME=/hf-cache
       - HF_HUB_CACHE=/hf-cache/hub
       - TRANSFORMERS_CACHE=/hf-cache/transformers
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
