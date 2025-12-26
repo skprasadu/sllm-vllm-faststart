@@ -57,9 +57,14 @@ services:
             - driver: nvidia
               capabilities: ["gpu"]
               device_ids: ["0"]
+
+    # ✅ IMPORTANT: share network namespace with sllm_store
+    network_mode: "service:sllm_store"
+    depends_on:
+      sllm_store:
+        condition: service_healthy
+
     environment:
-      - STORAGE_PATH=/models/vllm
-      - MEM_POOL_SIZE=4GB
       - HF_HOME=/hf-cache
       - HF_HUB_CACHE=/hf-cache/hub
       - TRANSFORMERS_CACHE=/hf-cache/transformers
@@ -67,9 +72,11 @@ services:
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
-    ports:
-      - "8000:8000"
-    # IMPORTANT: override image ENTRYPOINT (otherwise it starts store again)
+
+    # ❌ REMOVE THIS (ports must be on sllm_store when sharing network namespace)
+    # ports:
+    #   - "8000:8000"
+
     entrypoint: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
     command:
       - "--model"
@@ -82,7 +89,6 @@ services:
       - "0.0.0.0"
       - "--port"
       - "8000"
-      # --- T4-safe knobs ---
       - "--dtype"
       - "float16"
       - "--gpu-memory-utilization"
@@ -91,6 +97,39 @@ services:
       - "16"
       - "--max-model-len"
       - "4096"
+    restart: unless-stopped
+      
+  sllm_store:
+    profiles: ["faststart"]
+    build:
+      context: ./infra
+      dockerfile: Dockerfile.vllm_sllm
+    image: sllm-vllm-faststart:v0.1
+    container_name: sllm_store
+    shm_size: "10gb"
+    ipc: host
+    volumes:
+      - ${MODEL_FOLDER}:/models
+    environment:
+      - STORAGE_PATH=/models/vllm
+      - MEM_POOL_SIZE=4GB
+
+    entrypoint: ["sllm-store"]
+    command: ["start", "--storage-path", "/models/vllm", "--mem-pool-size", "4GB"]
+
+    # ✅ vLLM is listening on 8000 in this shared network namespace, so publish it from here.
+    ports:
+      - "8082:8000"
+      # Optional: you can expose store gRPC too, but not required for vLLM
+      - "8073:8073"
+
+    # ✅ make depends_on actually mean “ready”
+    healthcheck:
+      test: ["CMD-SHELL", "python3 - <<'PY'\nimport socket\ns=socket.socket(); s.settimeout(1)\ntry:\n  s.connect(('127.0.0.1', 8073))\nexcept Exception:\n  raise SystemExit(1)\nelse:\n  raise SystemExit(0)\nPY"]
+      interval: 1s
+      timeout: 1s
+      retries: 120
+
     restart: unless-stopped
 
   convert_qwen3_0_6b:
@@ -126,33 +165,3 @@ services:
       - "--storage-path"
       - "/models/vllm"
     restart: "no"
-
-  sllm_store:
-    profiles: ["faststart"]
-    build:
-      context: ./infra
-      dockerfile: Dockerfile.vllm_sllm
-    image: sllm-vllm-faststart:v0.1
-    container_name: sllm_store
-    shm_size: "10gb"
-    ipc: host
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              capabilities: ["gpu"]
-              device_ids: ["0"]
-    volumes:
-      - ${MODEL_FOLDER}:/models
-    environment:
-      - STORAGE_PATH=/models/vllm
-      - MEM_POOL_SIZE=4GB
-    # IMPORTANT: override image ENTRYPOINT (otherwise it starts vLLM too)
-    entrypoint: ["sllm-store"]
-    command: ["start", "--storage-path", "/models/vllm", "--mem-pool-size", "4GB"]
-    # IMPORTANT: expose vLLM port here because vllm_faststart will share this network namespace
-    ports:
-      - "8002:8000"
-      - "8073:8073"
-    restart: unless-stopped

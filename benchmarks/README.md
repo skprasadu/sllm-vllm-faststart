@@ -18,5 +18,6 @@ Run:
 <!-- BENCHMARKS:END -->
 
 <!-- FASTRESTART:START -->
-
+| Timestamp (UTC) | Git SHA | Host | GPU | Model | Runs | Baseline restart ready median (ms) | Faststart restart ready median (ms) | Restart speedup (x) | Baseline restart first completion median (s) | Faststart restart first completion median (s) | Notes | Raw |
+|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|
 <!-- FASTRESTART:END -->
