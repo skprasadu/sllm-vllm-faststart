@@ -109,8 +109,8 @@ measure_profile_json() {
   local first_s_list=()
 
   for i in $(seq 1 "$RUNS"); do
-    echo ""
-    echo "[bench] ${profile} run ${i}/${RUNS}"
+    echo "" >&2
+    echo "[bench] ${profile} run ${i}/${RUNS}" >&2
 
     hard_reset
     drop_caches_if_requested
@@ -128,8 +128,8 @@ measure_profile_json() {
       -H "Content-Type: application/json" \
       -d '{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"Say hello in one short sentence."}],"max_tokens":32}')"
 
-    echo "[bench] ${profile} time-to-ready: ${delta} ms"
-    echo "[bench] ${profile} first completion: ${t} s"
+    echo "[bench] ${profile} time-to-ready: ${delta} ms" >&2
+    echo "[bench] ${profile} first completion: ${t} s" >&2
 
     ready_ms_list+=("$delta")
     first_s_list+=("$t")
@@ -138,7 +138,7 @@ measure_profile_json() {
     sleep 1
   done
 
-  # SAFE JSON: parse from whitespace-separated strings (no IFS trickery).
+  # IMPORTANT: only JSON goes to STDOUT (captured by $(...))
   python3 - <<PY
 import json
 ready_s = """${ready_ms_list[*]}""".strip()

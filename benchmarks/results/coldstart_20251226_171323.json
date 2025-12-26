@@ -1,0 +1,41 @@
+{
+  "timestamp_utc": "2025-12-26T17:08:10Z",
+  "git_sha": "e9d1504",
+  "host": "TCE-serverless-v1",
+  "gpu": "Tesla T4, 15360 MiB",
+  "model": "Qwen/Qwen3-0.6B",
+  "runs": 3,
+  "drop_caches": false,
+  "note": "Azure T4, ubuntu 22.04",
+  "baseline": {
+    "ready_ms": [
+      43019,
+      43255,
+      43010
+    ],
+    "first_s": [
+      0.99634,
+      1.021682,
+      0.993806
+    ]
+  },
+  "faststart": {
+    "ready_ms": [
+      49990,
+      50438,
+      50233
+    ],
+    "first_s": [
+      0.832366,
+      0.827531,
+      0.839849
+    ]
+  },
+  "summary": {
+    "baseline_ready_median_ms": 43019.0,
+    "faststart_ready_median_ms": 50233.0,
+    "ready_speedup_x": 0.8563892262058806,
+    "baseline_first_completion_median_s": 0.99634,
+    "faststart_first_completion_median_s": 0.832366
+  }
+}
