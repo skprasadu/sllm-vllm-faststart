@@ -1,0 +1,40 @@
+FROM vllm/vllm-openai:v0.9.0.1
+
+# Pinned to match your working SLLM version.
+# ServerlessLLM docs say the vLLM patch is tested on vLLM 0.9.0.1. Keep this pinned. 
+ARG SLLM_REPO_TAG=v0.8.0
+ARG SLLM_STORE_PIP_VERSION=0.8.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates patch \
+  && rm -rf /var/lib/apt/lists/*
+
+# serverless-llm-store provides the sllm-store CLI and Python bindings
+RUN pip install --no-cache-dir "serverless-llm-store==${SLLM_STORE_PIP_VERSION}"
+
+# Fetch the vLLM compatibility patch from the ServerlessLLM repo and apply it to the installed vllm package
+RUN set -eux; \
+  SITE_PACKAGES="$(python3 -c 'import site; print(site.getsitepackages()[0])')"; \
+  echo "site-packages: ${SITE_PACKAGES}"; \
+  curl -L -o /tmp/sllm_load.patch \
+    "https://raw.githubusercontent.com/ServerlessLLM/ServerlessLLM/${SLLM_REPO_TAG}/sllm_store/vllm_patch/sllm_load.patch"; \
+  APPLIED=0; \
+  for P in 0 1 2 3; do \
+    if patch --dry-run --batch -p"${P}" -d "${SITE_PACKAGES}" < /tmp/sllm_load.patch >/dev/null 2>&1; then \
+      patch --batch -p"${P}" -d "${SITE_PACKAGES}" < /tmp/sllm_load.patch; \
+      echo "Applied sllm_load.patch with -p${P}"; \
+      APPLIED=1; \
+      break; \
+    fi; \
+  done; \
+  test "${APPLIED}" -eq 1
+
+# Fetch the conversion tool used by ServerlessLLM to save a model into the Store format for vLLM
+RUN mkdir -p /opt/sllm_tools && \
+  curl -L -o /opt/sllm_tools/save_vllm_model.py \
+    "https://raw.githubusercontent.com/ServerlessLLM/ServerlessLLM/${SLLM_REPO_TAG}/examples/sllm_store/save_vllm_model.py"
+
+COPY ./entrypoint_store_and_vllm.sh /entrypoint_store_and_vllm.sh
+RUN chmod +x /entrypoint_store_and_vllm.sh
+
+ENTRYPOINT ["/entrypoint_store_and_vllm.sh"]

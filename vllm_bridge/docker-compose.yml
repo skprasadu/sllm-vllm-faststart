@@ -1,0 +1,97 @@
+services:
+  vllm_baseline:
+    image: vllm/vllm-openai:v0.9.0.1
+    container_name: vllm_baseline
+    shm_size: "10gb"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]
+              device_ids: ["0"]
+    environment:
+      - HF_HOME=/hf-cache
+      - HF_HUB_CACHE=/hf-cache/hub
+      - TRANSFORMERS_CACHE=/hf-cache/transformers
+    volumes:
+      - ${HF_CACHE_FOLDER}:/hf-cache
+    ports:
+      - "8001:8001"
+    command:
+      - "--model"
+      - "Qwen/Qwen3-0.6B"
+      - "--served-model-name"
+      - "Qwen/Qwen3-0.6B"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8001"
+    restart: unless-stopped
+
+  vllm_faststart:
+    build:
+      context: ./infra
+      dockerfile: Dockerfile.vllm_sllm
+    image: sllm-vllm-faststart:v0.1
+    container_name: vllm_faststart
+    shm_size: "10gb"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]
+              device_ids: ["0"]
+    environment:
+      - STORAGE_PATH=/models/vllm
+      - MEM_POOL_SIZE=4GB
+      - HF_HOME=/hf-cache
+      - HF_HUB_CACHE=/hf-cache/hub
+      - TRANSFORMERS_CACHE=/hf-cache/transformers
+    volumes:
+      - ${MODEL_FOLDER}:/models
+      - ${HF_CACHE_FOLDER}:/hf-cache
+    ports:
+      - "8000:8000"
+    command:
+      - "--model"
+      - "/models/vllm/Qwen/Qwen3-0.6B"
+      - "--served-model-name"
+      - "Qwen/Qwen3-0.6B"
+      - "--load-format"
+      - "serverless_llm"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+    restart: unless-stopped
+
+  convert_qwen3_0_6b:
+    image: sllm-vllm-faststart:v0.1
+    container_name: convert_qwen3_0_6b
+    profiles: ["tools"]
+    shm_size: "10gb"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]
+              device_ids: ["0"]
+    environment:
+      - HF_HOME=/hf-cache
+      - HF_HUB_CACHE=/hf-cache/hub
+      - TRANSFORMERS_CACHE=/hf-cache/transformers
+    volumes:
+      - ${MODEL_FOLDER}:/models
+      - ${HF_CACHE_FOLDER}:/hf-cache
+    entrypoint: ["bash", "-lc"]
+    command: >
+      python3 /opt/sllm_tools/save_vllm_model.py
+      --model-name Qwen/Qwen3-0.6B
+      --tensor-parallel-size 1
+      --storage-path /models/vllm
