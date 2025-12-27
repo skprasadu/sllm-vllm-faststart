@@ -13,6 +13,7 @@ Run:
 <!-- BENCHMARKS:START -->
 | Timestamp (UTC) | Git SHA | Host | GPU | Model | Runs | Baseline ready median (ms) | Faststart ready median (ms) | Ready speedup (x) | Baseline first completion median (s) | Faststart first completion median (s) | Notes | Raw |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|
+| 2025-12-27T18:01:53Z | ae9310e | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 39824 | 50092 | 0.80 | 0.537 | 0.319 | drop_caches=1, note=H100 NVMe, cold cache, ports=baseline:8001,faststart:8082, mem_pool=16GB | [json](results/coldstart_20251227_180652.json) |
 | 2025-12-27T15:59:49Z | b79a401 | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 32524 | 106107 | 0.31 | 0.540 | 0.315 | note=Azure H100, mem_pool=32GB, ports=baseline:8001,faststart:8082, mem_pool=32GB | [json](results/coldstart_20251227_160807.json) |
 | 2025-12-27T15:48:17Z | 3d88a0c | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 95725 | 108040 | 0.89 | 0.537 | 0.319 | drop_caches=1, note=Azure H100, cold cache, mem_pool=32GB, ports=baseline:8001,faststart:8082, mem_pool=32GB | [json](results/coldstart_20251227_155904.json) |
 | 2025-12-27T15:27:56Z | 3d88a0c | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 32288 | 106098 | 0.30 | 0.530 | 0.318 | note=Azure H100, mem_pool=32GB, ports=baseline:8001,faststart:8082, mem_pool=32GB | [json](results/coldstart_20251227_153515.json) |
@@ -24,6 +25,7 @@ Run:
 <!-- FASTRESTART:START -->
 | Timestamp (UTC) | Git SHA | Host | GPU | Model | Runs | Baseline restart ready median (ms) | Faststart restart ready median (ms) | Restart speedup (x) | Baseline restart first completion median (s) | Faststart restart first completion median (s) | Notes | Raw |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|
+| 2025-12-27T17:56:53Z | ae9310e | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 32566 | 27476 | 1.19 | 0.528 | 0.315 | drop_caches=1, note=H100 NVMe, store warm, OS pagecache dropped, ports=baseline:8001,faststart:8082 | [json](results/fastrestart_20251227_180143.json) |
 | 2025-12-27T15:41:07Z | 3d88a0c | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 26293 | 24159 | 1.09 | 0.515 | 0.313 | note=Azure H100, store sidecar, mem_pool=32GB, ports=baseline:8001,faststart:8082 | [json](results/fastrestart_20251227_154611.json) |
 | 2025-12-27T15:35:27Z | 3d88a0c | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 26323 | 24153 | 1.09 | 0.519 | 0.318 | note=Azure H100, store sidecar, mem_pool=32GB, ports=baseline:8001,faststart:8082 | [json](results/fastrestart_20251227_154031.json) |
 | 2025-12-27T14:49:17Z | 04b668b | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 26301 | 24160 | 1.09 | 0.552 | 0.314 | note=Azure H100, ubuntu 22.04, store sidecar, ports=baseline:8001,faststart:8082 | [json](results/fastrestart_20251227_145423.json) |
