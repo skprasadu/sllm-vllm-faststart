@@ -248,7 +248,7 @@ compose build vllm_faststart >/dev/null
 
 echo ""
 echo "[bench] ===== BASELINE ====="
-BASELINE_JSON="$(measure_profile_json baseline vllm_baseline 8001)"
+BASELINE_JSON="$(measure_profile_json baseline vllm_baseline "$VLLM_BASELINE_PORT")"
 
 echo ""
 echo "[bench] ===== FASTSTART ====="
