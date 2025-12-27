@@ -1,3 +1,7 @@
+x-env-files: &env_files
+  - ./env/common.env
+  - ../.env
+
 services:
   vllm_baseline:
     profiles: ["baseline"]
@@ -12,11 +16,7 @@ services:
             - driver: nvidia
               capabilities: ["gpu"]
               device_ids: ["0"]
-    environment:
-      - HF_HOME=/hf-cache
-      - HF_HUB_CACHE=/hf-cache/hub
-      - TRANSFORMERS_CACHE=/hf-cache/transformers
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    env_file: *env_files
     volumes:
       - ${HF_CACHE_FOLDER}:/hf-cache
     ports:
@@ -64,11 +64,7 @@ services:
       sllm_store:
         condition: service_healthy
 
-    environment:
-      - HF_HOME=/hf-cache
-      - HF_HUB_CACHE=/hf-cache/hub
-      - TRANSFORMERS_CACHE=/hf-cache/transformers
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    env_file: *env_files
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
@@ -117,9 +113,7 @@ services:
               device_ids: ["0"]
     volumes:
       - ${MODEL_FOLDER}:/models
-    environment:
-      - STORAGE_PATH=/models/vllm
-      - MEM_POOL_SIZE=${MEM_POOL_SIZE:-4GB}
+    env_file: *env_files
 
     entrypoint: ["sllm-store"]
     command: ["start", "--storage-path", "/models/vllm", "--mem-pool-size", "${MEM_POOL_SIZE:-4GB}"]
@@ -156,11 +150,7 @@ services:
             - driver: nvidia
               capabilities: ["gpu"]
               device_ids: ["0"]
-    environment:
-      - HF_HOME=/hf-cache
-      - HF_HUB_CACHE=/hf-cache/hub
-      - TRANSFORMERS_CACHE=/hf-cache/transformers
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    env_file: *env_files
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
