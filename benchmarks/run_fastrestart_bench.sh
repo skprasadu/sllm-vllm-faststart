@@ -18,16 +18,20 @@ DROP_CACHES=0
 NOTE=""
 VLLM_BASELINE_PORT="8001"
 VLLM_FASTSTART_PORT="8082"
+MODEL_NAME="Qwen/Qwen3-0.6B"
+MEM_POOL_SIZE="4GB"
 
 usage() {
   cat <<USAGE
 Usage: $0 [--runs N] [--drop-caches] [--note "text"] [--baseline-port P] [--faststart-port P]
-
+         [--model MODEL_ID] [--mem-pool-size SIZE]
   --runs N            Number of restart iterations per profile (default: 5)
   --drop-caches       Drop Linux page cache before each restart (requires passwordless sudo)
   --note "text"       Freeform note stored in README table + JSON
   --baseline-port P   Baseline vLLM host port (default: 8001)
   --faststart-port P  Faststart vLLM host port (default: 8082)
+  --model MODEL_ID    HF model id (default: Qwen/Qwen3-0.6B)
+  --mem-pool-size SZ  sllm-store pinned pool (default: 4GB)
 
 Examples:
   $0 --runs 5
@@ -88,10 +92,16 @@ while [[ $# -gt 0 ]]; do
     --note) NOTE="${2:-}"; shift 2 ;;
     --baseline-port) VLLM_BASELINE_PORT="${2:-}"; shift 2 ;;
     --faststart-port) VLLM_FASTSTART_PORT="${2:-}"; shift 2 ;;
+    --model) MODEL_NAME="${2:-}"; shift 2 ;;
+    --mem-pool-size) MEM_POOL_SIZE="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "[fastrestart] ERROR: unknown arg: $1" >&2; usage; exit 2 ;;
   esac
 done
+
+: "${MODEL_NAME:=Qwen/Qwen3-0.6B}"
+: "${MEM_POOL_SIZE:=4GB}"
+export MODEL_NAME MEM_POOL_SIZE VLLM_BASELINE_PORT VLLM_FASTSTART_PORT
 
 if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
   echo "[fastrestart] ERROR: --runs must be a positive integer" >&2
@@ -186,7 +196,7 @@ warmup_once() {
   out="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" \
     "$url_chat" \
     -H "Content-Type: application/json" \
-    -d '{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"warmup"}],"max_tokens":8}')"
+    -d "{\"model\":\"${MODEL_NAME}\",\"messages\":[{\"role\":\"user\",\"content\":\"warmup\"}],\"max_tokens\":8}")"
   code="${out%% *}"
   t="${out##* }"
   if [[ "$code" != "200" ]]; then
@@ -222,7 +232,7 @@ measure_restarts_json() {
     out="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" \
       "$url_chat" \
       -H "Content-Type: application/json" \
-      -d '{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"Say hello in one short sentence."}],"max_tokens":32}')"
+      -d "{\"model\":\"${MODEL_NAME}\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello in one short sentence.\"}],\"max_tokens\":32}")"
     code="${out%% *}"
     t="${out##* }"
     if [[ "$code" != "200" ]]; then
@@ -263,10 +273,10 @@ HDR
 fi
 
 # store-format model must exist
-if [[ ! -d "$MODEL_FOLDER/vllm/Qwen/Qwen3-0.6B" ]]; then
-  echo "[fastrestart] ERROR: missing store-format model at: $MODEL_FOLDER/vllm/Qwen/Qwen3-0.6B" >&2
+if [[ ! -d "$MODEL_FOLDER/vllm/${MODEL_NAME}" ]]; then
+  echo "[fastrestart] ERROR: missing store-format model at: $MODEL_FOLDER/vllm/${MODEL_NAME}" >&2
   echo "[fastrestart] Run conversion:" >&2
-  echo "  docker compose -f vllm_bridge/docker-compose.yml --profile tools run -T --rm convert_qwen3_0_6b" >&2
+  echo "  docker compose -f vllm_bridge/docker-compose.yml --profile tools run -T --rm convert_model" >&2
   exit 2
 fi
 
@@ -274,14 +284,14 @@ TS_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 HOSTNAME="$(hostname || echo "unknown")"
 GPU="$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -n 1 || echo "unknown")"
-MODEL="Qwen/Qwen3-0.6B"
+MODEL="$MODEL_NAME"
 
 echo "[fastrestart] Repo: $REPO_ROOT" >&2
 echo "[fastrestart] ENV_FILE=${ENV_FILE:-<none>}" >&2
 echo "[fastrestart] MODEL_FOLDER=$MODEL_FOLDER" >&2
 echo "[fastrestart] HF_CACHE_FOLDER=$HF_CACHE_FOLDER" >&2
 echo "[fastrestart] RUNS=$RUNS DROP_CACHES=$DROP_CACHES NOTE='${NOTE}'" >&2
-echo "[fastrestart] baseline port=$VLLM_BASELINE_PORT faststart port=$VLLM_FASTSTART_PORT" >&2
+echo "[fastrestart] MODEL_NAME=${MODEL_NAME} MEM_POOL_SIZE=${MEM_POOL_SIZE}" >&2
 
 # ---------------- BASELINE ----------------
 hard_reset_all
@@ -359,6 +369,7 @@ out = {
   "runs": $RUNS,
   "drop_caches": bool($DROP_CACHES),
   "note": "$NOTE",
+  "mem_pool_size": "$MEM_POOL_SIZE",
   "ports": {"baseline_port": int("$VLLM_BASELINE_PORT"), "faststart_port": int("$VLLM_FASTSTART_PORT")},
   "baseline_restart": json.loads('''$BASELINE_JSON'''),
   "faststart_restart": json.loads('''$FASTSTART_JSON'''),

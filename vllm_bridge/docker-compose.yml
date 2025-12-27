@@ -20,12 +20,12 @@ services:
     volumes:
       - ${HF_CACHE_FOLDER}:/hf-cache
     ports:
-      - "8001:8001"
+      - "${VLLM_BASELINE_PORT:-8001}:8001"
     command:
       - "--model"
-      - "Qwen/Qwen3-0.6B"
+      - "${MODEL_NAME:-Qwen/Qwen3-0.6B}"
       - "--served-model-name"
-      - "Qwen/Qwen3-0.6B"
+      - "${MODEL_NAME:-Qwen/Qwen3-0.6B}"
       - "--host"
       - "0.0.0.0"
       - "--port"
@@ -80,9 +80,9 @@ services:
     entrypoint: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
     command:
       - "--model"
-      - "/models/vllm/Qwen/Qwen3-0.6B"
+      - "/models/vllm/${MODEL_NAME:-Qwen/Qwen3-0.6B}"
       - "--served-model-name"
-      - "Qwen/Qwen3-0.6B"
+      - "${MODEL_NAME:-Qwen/Qwen3-0.6B}"
       - "--load-format"
       - "serverless_llm"
       - "--host"
@@ -119,14 +119,14 @@ services:
       - ${MODEL_FOLDER}:/models
     environment:
       - STORAGE_PATH=/models/vllm
-      - MEM_POOL_SIZE=4GB
+      - MEM_POOL_SIZE=${MEM_POOL_SIZE:-4GB}
 
     entrypoint: ["sllm-store"]
-    command: ["start", "--storage-path", "/models/vllm", "--mem-pool-size", "4GB"]
+    command: ["start", "--storage-path", "/models/vllm", "--mem-pool-size", "${MEM_POOL_SIZE:-4GB}"]
 
     # ✅ vLLM is listening on 8000 in this shared network namespace, so publish it from here.
     ports:
-      - "8082:8000"
+      - "${VLLM_FASTSTART_PORT:-8082}:8000"
       # Optional: you can expose store gRPC too, but not required for vLLM
       # - "8073:8073"
 
@@ -140,13 +140,13 @@ services:
 
     restart: unless-stopped
 
-  convert_qwen3_0_6b:
+  convert_model:
     profiles: ["tools"]
     build:
       context: ./infra
       dockerfile: Dockerfile.vllm_sllm
     image: sllm-vllm-faststart:v0.1
-    container_name: convert_qwen3_0_6b
+    container_name: convert_model
     shm_size: "10gb"
     ipc: host
     deploy:
@@ -167,7 +167,7 @@ services:
     entrypoint: ["python3", "/opt/sllm_tools/save_vllm_model.py"]
     command:
       - "--model-name"
-      - "Qwen/Qwen3-0.6B"
+      - "${MODEL_NAME:-Qwen/Qwen3-0.6B}"
       - "--tensor-parallel-size"
       - "1"
       - "--storage-path"

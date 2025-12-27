@@ -4,14 +4,22 @@ set -euo pipefail
 RUNS=3
 DROP_CACHES=0
 NOTE=""
+VLLM_BASELINE_PORT="8001"
+VLLM_FASTSTART_PORT="8082"
+MODEL_NAME="Qwen/Qwen3-0.6B"
+MEM_POOL_SIZE="4GB"
 
 usage() {
   cat <<USAGE
-Usage: $0 [--runs N] [--drop-caches] [--note "text"]
+Usage: $0 [--runs N] [--drop-caches] [--note "text"] [--baseline-port P] [--faststart-port P] [--model MODEL_ID] [--mem-pool-size SIZE]
 
   --runs N         Number of repeated runs (default: 3)
   --drop-caches    Drop Linux page cache between runs (requires sudo)
   --note "text"    Freeform note stored in the README table
+  --baseline-port P   Baseline vLLM host port (default: 8001)
+  --faststart-port P  Faststart vLLM host port (default: 8082)
+  --model MODEL_ID    HF model id (default: Qwen/Qwen3-0.6B)
+  --mem-pool-size SZ  sllm-store pinned pool (default: 4GB)
 
 Examples:
   $0 --runs 3
@@ -19,31 +27,6 @@ Examples:
   $0 --runs 3 --drop-caches --note "cold cache"
 USAGE
 }
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --runs) RUNS="${2:-}"; shift 2 ;;
-    --drop-caches) DROP_CACHES=1; shift 1 ;;
-    --note) NOTE="${2:-}"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "[bench] ERROR: unknown arg: $1" >&2; usage; exit 2 ;;
-  esac
-done
-
-if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
-  echo "[bench] ERROR: --runs must be a positive integer" >&2
-  exit 2
-fi
-
-if [[ -z "${MODEL_FOLDER:-}" ]]; then
-  echo "[bench] ERROR: MODEL_FOLDER is not set (example: export MODEL_FOLDER=/data/sllm-models)" >&2
-  exit 2
-fi
-
-if [[ -z "${HF_CACHE_FOLDER:-}" ]]; then
-  echo "[bench] ERROR: HF_CACHE_FOLDER is not set (example: export HF_CACHE_FOLDER=/data/hf-cache)" >&2
-  exit 2
-fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$REPO_ROOT" ]]; then
@@ -59,15 +42,82 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
   echo "[bench] ERROR: compose file not found: $COMPOSE_FILE" >&2
   exit 2
 fi
-
 if [[ ! -f "$README_FILE" ]]; then
   echo "[bench] ERROR: README not found: $README_FILE" >&2
   exit 2
 fi
-
 mkdir -p "$RESULTS_DIR"
 
-compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
+# Prefer .env, fall back to .env.template
+ENV_FILE=""
+if [[ -f "$REPO_ROOT/.env" ]]; then
+  ENV_FILE="$REPO_ROOT/.env"
+elif [[ -f "$REPO_ROOT/.env.template" ]]; then
+  ENV_FILE="$REPO_ROOT/.env.template"
+fi
+
+# Load env vars FIRST (so CLI args override them)
+if [[ -n "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+# Now parse CLI args (CLI wins)
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runs) RUNS="${2:-}"; shift 2 ;;
+    --drop-caches) DROP_CACHES=1; shift 1 ;;
+    --note) NOTE="${2:-}"; shift 2 ;;
+    --baseline-port) VLLM_BASELINE_PORT="${2:-}"; shift 2 ;;
+    --faststart-port) VLLM_FASTSTART_PORT="${2:-}"; shift 2 ;;
+    --model) MODEL_NAME="${2:-}"; shift 2 ;;
+    --mem-pool-size) MEM_POOL_SIZE="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "[bench] ERROR: unknown arg: $1" >&2; usage; exit 2 ;;
+  esac
+done
+
+: "${VLLM_BASELINE_PORT:=8001}"
+: "${VLLM_FASTSTART_PORT:=8082}"
+: "${MODEL_NAME:=Qwen/Qwen3-0.6B}"
+: "${MEM_POOL_SIZE:=4GB}"
+
+export VLLM_BASELINE_PORT VLLM_FASTSTART_PORT MODEL_NAME MEM_POOL_SIZE
+
+if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
+  echo "[bench] ERROR: --runs must be a positive integer" >&2
+  exit 2
+fi
+
+if ! [[ "$VLLM_BASELINE_PORT" =~ ^[0-9]+$ ]]; then
+  echo "[bench] ERROR: --baseline-port must be numeric" >&2
+  exit 2
+fi
+if ! [[ "$VLLM_FASTSTART_PORT" =~ ^[0-9]+$ ]]; then
+  echo "[bench] ERROR: --faststart-port must be numeric" >&2
+  exit 2
+fi
+
+if [[ -z "${MODEL_FOLDER:-}" ]]; then
+  echo "[bench] ERROR: MODEL_FOLDER is not set (example: export MODEL_FOLDER=/data/sllm-models)" >&2
+  exit 2
+fi
+
+if [[ -z "${HF_CACHE_FOLDER:-}" ]]; then
+  echo "[bench] ERROR: HF_CACHE_FOLDER is not set (example: export HF_CACHE_FOLDER=/data/hf-cache)" >&2
+  exit 2
+fi
+
+compose() {
+  if [[ -n "$ENV_FILE" ]]; then
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  else
+    docker compose -f "$COMPOSE_FILE" "$@"
+  fi
+}
+
 now_ms() { date +%s%3N; }
 
 wait_ready() {
@@ -105,7 +155,7 @@ drop_caches_if_requested() {
 hard_reset() {
   # Your compose uses fixed container_name, so be explicit.
   compose down --remove-orphans >/dev/null 2>&1 || true
-  docker rm -f vllm_baseline vllm_faststart >/dev/null 2>&1 || true
+  docker rm -f vllm_baseline vllm_faststart sllm_store >/dev/null 2>&1 || true
 }
 
 measure_profile_json() {
@@ -134,7 +184,7 @@ measure_profile_json() {
     t="$(curl -s -o /dev/null -w "%{time_total}" \
       "$url_chat" \
       -H "Content-Type: application/json" \
-      -d '{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"Say hello in one short sentence."}],"max_tokens":32}')"
+      -d "{\"model\":\"${MODEL_NAME}\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello in one short sentence.\"}],\"max_tokens\":32}")"
 
     echo "[bench] ${profile} time-to-ready: ${delta} ms" >&2
     echo "[bench] ${profile} first completion: ${t} s" >&2
@@ -171,11 +221,11 @@ MARKERS
 fi
 
 # Faststart needs the converted store-format model
-if [[ ! -d "$MODEL_FOLDER/vllm/Qwen/Qwen3-0.6B" ]]; then
+if [[ ! -d "$MODEL_FOLDER/vllm/${MODEL_NAME}" ]]; then
   echo "[bench] ERROR: missing store-format model at:" >&2
-  echo "  $MODEL_FOLDER/vllm/Qwen/Qwen3-0.6B" >&2
+  echo "  $MODEL_FOLDER/vllm/${MODEL_NAME}" >&2
   echo "[bench] Run conversion:" >&2
-  echo "  docker compose -f vllm_bridge/docker-compose.yml --profile tools run -T --rm convert_qwen3_0_6b" >&2
+  echo "  docker compose -f vllm_bridge/docker-compose.yml --profile tools run -T --rm convert_model" >&2
   exit 2
 fi
 
@@ -183,12 +233,15 @@ TS_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 HOSTNAME="$(hostname || echo "unknown")"
 GPU="$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -n 1 || echo "unknown")"
-MODEL="Qwen/Qwen3-0.6B"
+MODEL="$MODEL_NAME"
 
 echo "[bench] Repo: $REPO_ROOT"
+echo "[bench] ENV_FILE=${ENV_FILE:-<none>}"
 echo "[bench] MODEL_FOLDER=$MODEL_FOLDER"
 echo "[bench] HF_CACHE_FOLDER=$HF_CACHE_FOLDER"
 echo "[bench] RUNS=$RUNS DROP_CACHES=$DROP_CACHES NOTE='${NOTE}'"
+echo "[bench] MODEL_NAME=${MODEL_NAME} MEM_POOL_SIZE=${MEM_POOL_SIZE}"
+echo "[bench] baseline port=${VLLM_BASELINE_PORT} faststart port=${VLLM_FASTSTART_PORT}"
 
 # Ensure image exists (no-op if already built)
 compose build vllm_faststart >/dev/null
@@ -199,7 +252,7 @@ BASELINE_JSON="$(measure_profile_json baseline vllm_baseline 8001)"
 
 echo ""
 echo "[bench] ===== FASTSTART ====="
-FASTSTART_JSON="$(measure_profile_json faststart vllm_faststart 8000)"
+FASTSTART_JSON="$(measure_profile_json faststart vllm_faststart "$VLLM_FASTSTART_PORT")"
 
 BASE_READY_MED="$(python3 - <<PY
 import json, statistics
@@ -246,6 +299,8 @@ out = {
   "runs": $RUNS,
   "drop_caches": bool($DROP_CACHES),
   "note": "$NOTE",
+  "ports": {"baseline_port": int("$VLLM_BASELINE_PORT"), "faststart_port": int("$VLLM_FASTSTART_PORT")},
+  "mem_pool_size": "$MEM_POOL_SIZE",
   "baseline": json.loads('''$BASELINE_JSON'''),
   "faststart": json.loads('''$FASTSTART_JSON'''),
   "summary": {
@@ -281,6 +336,8 @@ if int("$DROP_CACHES") == 1:
   notes.append("drop_caches=1")
 if "$NOTE":
   notes.append("note=" + "$NOTE")
+notes.append(f"ports=baseline:{int('$VLLM_BASELINE_PORT')},faststart:{int('$VLLM_FASTSTART_PORT')}")
+notes.append("mem_pool=" + "$MEM_POOL_SIZE")
 note_str = ", ".join(notes).replace("|", "\\|")
 
 row = (
