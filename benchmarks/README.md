@@ -20,5 +20,6 @@ Run:
 <!-- FASTRESTART:START -->
 | Timestamp (UTC) | Git SHA | Host | GPU | Model | Runs | Baseline restart ready median (ms) | Faststart restart ready median (ms) | Restart speedup (x) | Baseline restart first completion median (s) | Faststart restart first completion median (s) | Notes | Raw |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|
+| 2025-12-27T14:34:18Z | d92b0a7 | TCE-Lab-Linux-GPU | NVIDIA H100 NVL, 95830 MiB | meta-llama/Llama-3.1-8B-Instruct | 3 | 29423 | 24169 | 1.22 | 0.517 | 0.312 | note=Azure H100, ubuntu 22.04, store sidecar, ports=baseline:8001,faststart:8082 | [json](results/fastrestart_20251227_144104.json) |
 | 2025-12-26T21:22:52Z | 56c2e47 | TCE-serverless-v1 | Tesla T4, 15360 MiB | Qwen/Qwen3-0.6B | 3 | 36323 | 35553 | 1.02 | 1.004 | 0.832 | note=Azure T4, ubuntu 22.04, store sidecar, ports=baseline:8001,faststart:8082 | [json](results/fastrestart_20251226_212833.json) |
 <!-- FASTRESTART:END -->

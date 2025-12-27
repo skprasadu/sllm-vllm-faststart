@@ -1,0 +1,46 @@
+{
+  "timestamp_utc": "2025-12-27T14:34:18Z",
+  "git_sha": "d92b0a7",
+  "host": "TCE-Lab-Linux-GPU",
+  "gpu": "NVIDIA H100 NVL, 95830 MiB",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "runs": 3,
+  "drop_caches": false,
+  "note": "Azure H100, ubuntu 22.04, store sidecar",
+  "mem_pool_size": "16GB",
+  "ports": {
+    "baseline_port": 8001,
+    "faststart_port": 8082
+  },
+  "baseline_restart": {
+    "ready_ms": [
+      29423,
+      113613,
+      26269
+    ],
+    "first_s": [
+      0.53665,
+      0.516928,
+      0.503712
+    ]
+  },
+  "faststart_restart": {
+    "ready_ms": [
+      24143,
+      24176,
+      24169
+    ],
+    "first_s": [
+      0.311601,
+      0.31225,
+      0.317212
+    ]
+  },
+  "summary": {
+    "baseline_restart_ready_median_ms": 29423.0,
+    "faststart_restart_ready_median_ms": 24169.0,
+    "restart_speedup_x": 1.2173859075675453,
+    "baseline_restart_first_completion_median_s": 0.516928,
+    "faststart_restart_first_completion_median_s": 0.31225
+  }
+}
