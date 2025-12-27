@@ -116,7 +116,16 @@ services:
     env_file: *env_files
 
     entrypoint: ["sllm-store"]
-    command: ["start", "--storage-path", "/models/vllm", "--mem-pool-size", "${MEM_POOL_SIZE:-4GB}"]
+    command:
+      - start
+      - --storage-path
+      - /models/vllm
+      - --mem-pool-size
+      - ${MEM_POOL_SIZE:-16GB}
+      - --num-thread
+      - ${SLLM_NUM_THREAD:-16}
+      - --chunk-size
+      - ${SLLM_CHUNK_SIZE:-128MB}
 
     # ✅ vLLM is listening on 8000 in this shared network namespace, so publish it from here.
     ports:
