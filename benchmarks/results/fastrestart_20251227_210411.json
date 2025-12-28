@@ -1,0 +1,46 @@
+{
+  "timestamp_utc": "2025-12-27T20:55:33Z",
+  "git_sha": "4f3aa3b",
+  "host": "TCE-Lab-Linux-GPU",
+  "gpu": "NVIDIA H100 NVL, 95830 MiB",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "runs": 3,
+  "drop_caches": true,
+  "note": "H100 NVMe tuned store: threads=16 chunk=128MB, pagecache dropped",
+  "mem_pool_size": "32GB",
+  "ports": {
+    "baseline_port": 8001,
+    "faststart_port": 8082
+  },
+  "baseline_restart": {
+    "ready_ms": [
+      89313,
+      89257,
+      89222
+    ],
+    "first_s": [
+      0.549803,
+      0.518176,
+      0.558522
+    ]
+  },
+  "faststart_restart": {
+    "ready_ms": [
+      27646,
+      27420,
+      27191
+    ],
+    "first_s": [
+      0.312693,
+      0.312384,
+      0.312706
+    ]
+  },
+  "summary": {
+    "baseline_restart_ready_median_ms": 89257.0,
+    "faststart_restart_ready_median_ms": 27420.0,
+    "restart_speedup_x": 3.2551787016776075,
+    "baseline_restart_first_completion_median_s": 0.549803,
+    "faststart_restart_first_completion_median_s": 0.312693
+  }
+}
