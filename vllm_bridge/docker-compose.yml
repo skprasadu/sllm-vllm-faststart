@@ -2,6 +2,10 @@ x-env-files: &env_files
   - ./env/common.env
   - ../.env
 
+x-offline-env: &offline_env
+  HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-0}"
+  TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-0}"
+  
 services:
   vllm_baseline:
     profiles: ["baseline"]
@@ -17,6 +21,8 @@ services:
               capabilities: ["gpu"]
               device_ids: ["0"]
     env_file: *env_files
+    environment:
+      <<: *offline_env
     volumes:
       - ${HF_CACHE_FOLDER}:/hf-cache
     ports:
@@ -65,6 +71,8 @@ services:
         condition: service_healthy
 
     env_file: *env_files
+    environment:
+      <<: *offline_env
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
@@ -114,7 +122,8 @@ services:
     volumes:
       - ${MODEL_FOLDER}:/models
     env_file: *env_files
-
+    environment:
+      <<: *offline_env
     entrypoint: ["sllm-store"]
     command:
       - start
@@ -160,6 +169,8 @@ services:
               capabilities: ["gpu"]
               device_ids: ["0"]
     env_file: *env_files
+    environment:
+      <<: *offline_env
     volumes:
       - ${MODEL_FOLDER}:/models
       - ${HF_CACHE_FOLDER}:/hf-cache
